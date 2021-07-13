@@ -9,6 +9,27 @@ import shutil
 
 IMAGE_FORMATS = [".png", ".jpg", ".jpeg"]
 
+
+class RedditToVK:
+    def __init__(self, config_path: str = "config.ini"):
+        self.config_path = config_path
+        self.read_config()
+    
+    def read_config(self):
+        config = configparser.ConfigParser()
+        config.read(self.config_path)
+        
+        self.reddit = {}
+        self.vk = {}
+        
+        self.reddit["client_id"] = config.get("reddit", "client_id")
+        self.reddit["client_secret"] = config.get("reddit", "client_secret")
+        self.reddit["subreddit_name"] = config.get("reddit", "subreddit_name")
+        
+        self.vk["access_token"] = config.get("vk", "access_token")
+        self.vk["group_id"] = config.get("vk", "group_id")
+
+
 def job():
     config = configparser.ConfigParser()
     config.read('config.ini')
