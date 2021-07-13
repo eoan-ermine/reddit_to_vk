@@ -13,8 +13,10 @@ IMAGE_FORMATS = [".png", ".jpg", ".jpeg"]
 class RedditToVK:
     def __init__(self, config_path: str = "config.ini"):
         self.config_path = config_path
+        
         self.read_config()
-    
+        self.setup_api()
+ 
     def read_config(self):
         config = configparser.ConfigParser()
         config.read(self.config_path)
@@ -29,61 +31,66 @@ class RedditToVK:
         self.vk["access_token"] = config.get("vk", "access_token")
         self.vk["group_id"] = config.get("vk", "group_id")
 
+        self.delay = config.get("global", "delay")
 
-def job():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+    def setup_reddit(self):
+        self.reddit = praw.Reddit(
+            client_id = self.reddit["client_id"],
+            client_secret = self.reddit["client_secret"],
+            user_agent = "RedditToVK by u/eoanermine_"
+        )
 
-    session = vk.Session(access_token=config.get("vk", "access_token"))
-    api = vk.API(session, v='5.131')
+    def setup_vk(self):
+        session = vk.Session(access_token=self.vk["access_token"])
+        self.vk = vk.API(session, v='5.131')
 
-    reddit = praw.Reddit(
-        client_id=config.get("reddit", "client_id"),
-        client_secret=config.get("reddit", "client_secret"),
-        user_agent="reposter by u/eoanermine_",
-    )
-    subreddit = reddit.subreddit(config.get("reddit", "subreddit_name"))
-    for submission in subreddit.new():
-        url = submission.url
-        description = submission.title
-        permalink = submission.permalink
+    def setup_api(self):
+        self.setup_reddit()
+        self.setup_vk()
 
-        print(f"URL: {url}\tDescription: {description}\tPermalink: {permalink}")
-
-        if any([url.endswith(item) for item in IMAGE_FORMATS]):
-            upload_url = api.photos.getWallUploadServer(
-                group_id = config.get("vk", "group_id")
-            )["upload_url"]
-
-            response = requests.get(url, stream=True)
-            with open('img.png', 'wb') as out_file:
-                shutil.copyfileobj(response.raw, out_file)
-            del response
-
-            resp = requests.post(upload_url, files={
-                "photo": open("img.png", "rb")
-            }).json()
+    def run(self):
+        subreddit = reddit.subreddit(self.reddit["subreddit_name"])
+        for submission in subreddit.hot(limit=15):
+            url = submission.url
+            description = submission.title
+            permalink = submission.permalink
             
-            photo_obj = api.photos.saveWallPhoto(
-                group_id = config.get("vk", "group_id"),
-                photo = resp["photo"],
-                server = resp["server"],
-                hash = resp["hash"]
-            )[0]
+            if(any([url.endswith(item) for item in IMAGE_FORMATS]):
+                upload_url = api.photos.getWallUploadServer(
+                    group_id = self.vk["group_id"]
+                )["upload_url"]
 
-            owner_id = photo_obj["owner_id"]
-            photo_id = photo_obj["id"]
-            photo_id = f"photo{owner_id}_{photo_id}"
+                response = requests.get(url, stream=True)
+                with open('last_image.png', 'wb') as out_file:
+                    shutil.copyfileobj(response.raw, out_file)
+                del response
 
-            print(api.wall.post(
-                owner_id="-" + config.get("vk", "group_id"),
-                from_group=1,
-
-                message=description,
-                attachments = photo_id,
+                resp = requests.post(upload_url, files={
+                    "photo": open("last_image.png", "rb")
+                }).json()
                 
-                copyright=f"http://reddit.com{permalink}",
-            ))
+                photo_obj = api.photos.saveWallPhoto(
+                    group_id = self.vk["group_id"],
+                    photo = resp["photo"],
+                    server = resp["server"],
+                    hash = resp["hash"]
+                )[0]
 
+                owner_id = photo_obj["owner_id"]
+                photo_id = photo_obj["id"]
+                photo_id = f"photo{owner_id}_{photo_id}"
 
-job()
+                api.wall.post(
+                    owner_id="-" + self.vk["group_id"],
+                    from_group=1,
+
+                    message=description,
+                    attachments = photo_id,
+                    
+                    copyright=f"http://reddit.com{permalink}",
+                )
+    
+    def serve(self):
+        while True:
+            self.run()
+            time.sleep(self.delay)
