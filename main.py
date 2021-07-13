@@ -2,13 +2,27 @@ import vk
 import praw
 import configparser
 import requests
-import schedule
 import time
 import io
 import shutil
+import pickle
 
 IMAGE_FORMATS = [".png", ".jpg", ".jpeg"]
 
+
+class VisitedStorage:
+    def __init__(self, database_path: str = "database.pickle"):
+        self.database_path = database_path
+        self.visited = {}
+        
+    def load(self):
+        with open(self.database_path, "rb") as file:
+            self.visited = pickle.load(file)
+
+    def dump(self):
+        with open(self.database_path, "wb") as file:
+            pickle.dump(self.visited, file)
+            
 
 class RedditToVK:
     def __init__(self, config_path: str = "config.ini"):
