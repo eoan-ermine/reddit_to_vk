@@ -133,3 +133,10 @@ class RedditToVK:
         while True:
             self.run()
             time.sleep(self.delay)
+
+
+if __name__ == "__main__":
+    bot = RedditToVK()
+
+    bot.run(dry_run=True)
+    bot.serve()
