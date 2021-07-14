@@ -7,7 +7,7 @@ import io
 import shutil
 import pickle
 
-IMAGE_FORMATS = [".png", ".jpg", ".jpeg"]
+IMAGE_FORMATS = [".png", ".jpg"]
 
 
 class VisitedStorage:
@@ -32,7 +32,7 @@ class VisitedStorage:
     def __enter__(self):
         try:
             self.load()
-        except FileNotFoundException:
+        except FileNotFoundError:
             self.dump()
         return self
 
@@ -63,10 +63,10 @@ class RedditToVK:
         self.vk["access_token"] = config.get("vk", "access_token")
         self.vk["group_id"] = config.get("vk", "group_id")
 
-        self.delay = config.get("global", "delay")
+        self.delay = config.getint("global", "delay")
 
     def setup_reddit(self):
-        self.reddit = praw.Reddit(
+        self.reddit_api = praw.Reddit(
             client_id=self.reddit["client_id"],
             client_secret=self.reddit["client_secret"],
             user_agent="RedditToVK by u/eoanermine_",
@@ -74,30 +74,36 @@ class RedditToVK:
 
     def setup_vk(self):
         session = vk.Session(access_token=self.vk["access_token"])
-        self.vk = vk.API(session, v="5.131")
+        self.vk_api = vk.API(session, v="5.131")
 
     def setup_api(self):
         self.setup_reddit()
         self.setup_vk()
 
     def run(self, dry=False):
-        subreddit = reddit.subreddit(self.reddit["subreddit_name"])
-        for submission in subreddit.hot(limit=15):
+        subreddit = self.reddit_api.subreddit(self.reddit["subreddit_name"])
+        for submission in subreddit.hot(limit=20):
             url = submission.url
             description = submission.title
             permalink = submission.permalink
 
+            print(f"Handling submission\nURL:\t{url}\nDescription:\t{description}\nPermalink:\t{permalink}")
+
             id = submission.name
             with VisitedStorage() as storage:
                 if storage.contains(id):
+                    print("SKIPPED (IN_DB)\n")
                     continue
                 storage.add(id)
 
             if dry:
+                print("SKIPPED (DRY)\n")
                 continue
 
+            print()
+
             if any([url.endswith(item) for item in IMAGE_FORMATS]):
-                upload_url = api.photos.getWallUploadServer(
+                upload_url = self.vk_api.photos.getWallUploadServer(
                     group_id=self.vk["group_id"]
                 )["upload_url"]
 
@@ -110,7 +116,7 @@ class RedditToVK:
                     upload_url, files={"photo": open("last_image.png", "rb")}
                 ).json()
 
-                photo_obj = api.photos.saveWallPhoto(
+                photo_obj = self.vk_api.photos.saveWallPhoto(
                     group_id=self.vk["group_id"],
                     photo=resp["photo"],
                     server=resp["server"],
@@ -121,7 +127,7 @@ class RedditToVK:
                 photo_id = photo_obj["id"]
                 photo_id = f"photo{owner_id}_{photo_id}"
 
-                api.wall.post(
+                self.vk_api.wall.post(
                     owner_id="-" + self.vk["group_id"],
                     from_group=1,
                     message=description,
@@ -133,10 +139,11 @@ class RedditToVK:
         while True:
             self.run()
             time.sleep(self.delay)
+            print(f"{self.delay} SECONDS PASSED\n")
 
 
 if __name__ == "__main__":
     bot = RedditToVK()
 
-    bot.run(dry_run=True)
+    bot.run(dry=True)
     bot.serve()
